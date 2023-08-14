@@ -106,7 +106,7 @@ static PHP_GINIT_FUNCTION(pcov)
 	ZEND_SECURE_ZERO(pcov_globals, sizeof(zend_pcov_globals));
 }
 
-static zend_always_inline zend_bool php_pcov_wants(zend_string *filename) { /* {{{ */
+static zend_always_inline zend_bool php_pcov_wants_inner(zend_string *filename) { /* {{{ */
 	if (!PCG(directory)) {
 		return 1;
 	}
@@ -178,6 +178,26 @@ static zend_always_inline zend_bool php_pcov_wants(zend_string *filename) { /* {
 
 	zend_hash_add_empty_element(&PCG(ignores), filename);
 	return 0;
+} /* }}} */
+
+void *prev_filename = NULL;
+zend_bool prev_result = false;
+
+// no handler => 111ms
+// return 0 => 145ms
+// no cache => 175ms
+// cached   => 162ms
+
+static zend_always_inline zend_bool php_pcov_wants(zend_string *filename) { /* {{{ */
+	return 0;
+
+	if (prev_filename == filename) {
+		return prev_result;
+	}
+
+	prev_filename = (void*) filename;
+	prev_result = php_pcov_wants_inner(filename);
+	return prev_result;
 } /* }}} */
 
 static zend_always_inline zend_bool php_pcov_ignored_opcode(zend_uchar opcode) { /* {{{ */
@@ -266,7 +286,7 @@ static zend_always_inline int php_pcov_has(zend_string *filename, uint32_t linen
 } /* }}} */
 
 static zend_always_inline int php_pcov_trace(zend_execute_data *execute_data) { /* {{{ */
-    if (PCG(enabled)) {
+	if (PCG(enabled)) {
 		if (php_pcov_wants(EX(func)->op_array.filename) &&
 			!php_pcov_ignored_opcode(EX(opline)->opcode) &&
 			!php_pcov_has(EX(func)->op_array.filename, EX(opline)->lineno)) {
@@ -520,6 +540,10 @@ PHP_RSHUTDOWN_FUNCTION(pcov)
 		zend_string_release(PCG(directory));
 	}
 
+	if (PCG(include)) {
+		php_pcre_pce_decref(PCG(include));
+	}
+
 	if (PCG(exclude)) {
 		php_pcre_pce_decref(PCG(exclude));
 	}
@@ -710,7 +734,7 @@ static void php_pcov_discover_file(zend_string *file, zval *return_value) { /* {
 
 	zend_hash_update(&PCG(discovered), file, &discovered);
 	zend_arena_destroy(mem);
-	
+
 	php_pcov_discover_file(file, return_value);
 } /* }}} */
 
@@ -774,7 +798,7 @@ PHP_NAMED_FUNCTION(php_pcov_collect)
 					if (zend_string_equals(name, Z_STR_P(filtered))) {
 						goto _php_pcov_collect_exclude;
 					}
-				} ZEND_HASH_FOREACH_END();				
+				} ZEND_HASH_FOREACH_END();
 				php_pcov_discover_file(name, return_value);
 
 			_php_pcov_collect_exclude:
@@ -853,7 +877,7 @@ PHP_NAMED_FUNCTION(php_pcov_waiting)
 	zend_string *waiting;
 
 	if (zend_parse_parameters_none() != SUCCESS) {
-		return;	
+		return;
 	}
 
 	PHP_PCOV_API_ENABLED_GUARD();
