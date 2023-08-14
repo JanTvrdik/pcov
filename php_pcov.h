@@ -56,12 +56,14 @@ ZEND_BEGIN_MODULE_GLOBALS(pcov)
 	HashTable         discovered;
 	HashTable         covered;
 	zend_string      *directory;
+	pcre_cache_entry *include;
 	pcre_cache_entry *exclude;
 	struct {
 		zend_bool enabled;
 		zend_long memory;
 		zend_long files;
 		char     *directory;
+		char     *include;
 		char     *exclude;
 	} ini;
 ZEND_END_MODULE_GLOBALS(pcov)

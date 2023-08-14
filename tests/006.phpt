@@ -13,6 +13,7 @@ phpinfo(INFO_MODULES);
 PCOV support => Disabled
 PCOV version => %s
 pcov.directory => auto
+pcov.include => none
 pcov.exclude => none
 pcov.initial.memory => 65336 bytes
 pcov.initial.files => 64

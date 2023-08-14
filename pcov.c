@@ -80,6 +80,10 @@ PHP_INI_BEGIN()
 		PHP_INI_SYSTEM | PHP_INI_PERDIR, OnUpdateString,
 		ini.directory, zend_pcov_globals, pcov_globals)
 	STD_PHP_INI_ENTRY  (
+		"pcov.include", "",
+		PHP_INI_SYSTEM | PHP_INI_PERDIR, OnUpdateString,
+		ini.include, zend_pcov_globals, pcov_globals)
+	STD_PHP_INI_ENTRY  (
 		"pcov.exclude", "",
 		PHP_INI_SYSTEM | PHP_INI_PERDIR, OnUpdateString,
 		ini.exclude, zend_pcov_globals, pcov_globals)
@@ -140,6 +144,28 @@ static zend_always_inline zend_bool php_pcov_wants(zend_string *filename) { /* {
 				0, 0, 0, 0);
 
 			if (zend_is_true(&match)) {
+				zend_hash_add_empty_element(
+					&PCG(ignores), filename);
+				return 0;
+			}
+		}
+
+		if (PCG(include)) {
+			zval match;
+
+			ZVAL_UNDEF(&match);
+
+			php_pcre_match_impl(
+				PCG(include),
+#if PHP_VERSION_ID >= 70400
+				filename,
+#else
+				ZSTR_VAL(filename), ZSTR_LEN(filename),
+#endif
+				&match, NULL,
+				0, 0, 0, 0);
+
+			if (!zend_is_true(&match)) {
 				zend_hash_add_empty_element(
 					&PCG(ignores), filename);
 				return 0;
@@ -394,6 +420,24 @@ static  void php_pcov_setup_directory(char *directory) { /* {{{ */
 	PCG(directory) = zend_string_init(directory, strlen(directory), 0);
 } /* }}} */
 
+static zend_always_inline void php_pcov_setup_include(char *include) { /* {{{ */
+	zend_string *pattern;
+
+	if (!include || !*include) {
+		return;
+	}
+
+	pattern = zend_string_init(include, strlen(include), 0);
+
+	PCG(include) = pcre_get_compiled_regex_cache(pattern);
+
+	if (PCG(include)) {
+		php_pcre_pce_incref(PCG(include));
+	}
+
+	zend_string_release(pattern);
+} /* }}} */
+
 static zend_always_inline void php_pcov_setup_exclude(char *exclude) { /* {{{ */
 	zend_string *pattern;
 
@@ -435,6 +479,7 @@ PHP_RINIT_FUNCTION(pcov)
 	zend_hash_init(&PCG(covered),    INI_INT("pcov.initial.files"), NULL, php_pcov_covered_dtor, 0);
 
 	php_pcov_setup_directory(INI_STR("pcov.directory"));
+	php_pcov_setup_include(INI_STR("pcov.include"));
 	php_pcov_setup_exclude(INI_STR("pcov.exclude"));
 
 #ifdef ZEND_COMPILE_NO_JUMPTABLES
@@ -494,6 +539,7 @@ PHP_MINFO_FUNCTION(pcov)
 {
 	char info[64];
 	char *directory = INI_STR("pcov.directory");
+	char *include   = INI_STR("pcov.include");
 	char *exclude   = INI_STR("pcov.exclude");
 
 	php_info_print_table_start();
@@ -507,6 +553,9 @@ PHP_MINFO_FUNCTION(pcov)
 	php_info_print_table_row(2,
 		"pcov.directory",
 		directory && *directory ? directory : (PCG(directory) ? ZSTR_VAL(PCG(directory)) : "auto"));
+	php_info_print_table_row(2,
+		"pcov.include",
+		include   && *include   ? include : "none");
 	php_info_print_table_row(2,
 		"pcov.exclude",
 		exclude   && *exclude   ? exclude : "none" );
